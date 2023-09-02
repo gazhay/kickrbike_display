@@ -7,7 +7,7 @@
 ## Data injected into sauce4zwift (into the "self" athelete)
 
 ```
-["self",{ "KICKRgear":{"cr":<frontgear>,"gr":<reargear>}, "KICKRpower":<power>, "KICKRgrade":<grade>,  "KICKRtiltLock":<tilt> }]
+{ "KICKRgear":{"cr":<frontgear>,"gr":<reargear>}, "KICKRpower":<power>, "KICKRgrade":<grade>,  "KICKRtiltLock":<tilt> }
 ```
 
 You *must* configure these lines for your own use
