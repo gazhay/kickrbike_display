@@ -1,8 +1,8 @@
 ## This Fork
 
-- Sketch updated for (Lilygo Dongle)[https://www.lilygo.cc/products/t-dongle-s3]
+- Sketch updated for [Lilygo Dongle](https://www.lilygo.cc/products/t-dongle-s3)
 - Added cycling power metric
-- Relays all data to (sauce4zwift)[https://www.sauce.llc/products/sauce4zwift/]
+- Relays all data to [sauce4zwift](https://www.sauce.llc/products/sauce4zwift/)
 
 ## Data injected into sauce4zwift
 
