@@ -14,6 +14,16 @@
 //#include "BLEScan.h"
 #include "lock64.h"
 #include "unlock64.h"
+
+#include <WiFi.h>
+#include <HTTPClient.h>
+
+const char* ssid = "<yourSSID>";
+const char* password = "<yourPassword>";
+
+const char* serverName = "http://<sauceServer>:1080/api/rpc/v1/updateAthleteData";
+
+
 TFT_eSPI tft = TFT_eSPI();  // Invoke library, pins defined in User_Setup.h
 
 // The remote service we wish to connect to.
@@ -28,17 +38,22 @@ static BLEUUID serviceUUID2("a026ee0b-0a7d-4ab3-97fa-f1500f9feb8b");
 // The characteristic of the remote service we are interested in.
 static BLEUUID    charUUID2("a026e037-0a7d-4ab3-97fa-f1500f9feb8b");
 
+static BLEUUID serviceUUID3("00001818-0000-1000-8000-00805f9b34fb");
+static BLEUUID    charUUID3("00002a63-0000-1000-8000-00805f9b34fb");
 
 static boolean doConnect = false;
 static boolean connected = false;
 static boolean doScan = false;
 static BLERemoteCharacteristic* pRemoteCharacteristic;
 static BLERemoteCharacteristic* pRemoteCharacteristic2;
+static BLERemoteCharacteristic* pRemoteCharacteristic3;
+
 static BLEAdvertisedDevice* myDevice;
 
 String reargear = ("0");
 String frontgear = ("0");
 String grade = ("0.0");
+String power = ("0");
 
 int fg, rg;
 uint8_t arr[32];
@@ -48,7 +63,7 @@ int negative = 0;
 
 void calc_tilt(uint8_t *pData, size_t length){
 
-  
+
   for (int i = 0; i < length; i++) {
 
     Serial.print(pData[i], HEX);
@@ -66,10 +81,10 @@ void calc_tilt(uint8_t *pData, size_t length){
     char s[10] = {};
     if(pData[3] < 0x80)
     {
-      negative = 0; 
+      negative = 0;
       float tmp = (float)(pData[3] << 8 | pData[2]) / 100;
       Serial.println(tmp);
-      sprintf(s, "+ %.1f %%", tmp); 
+      sprintf(s, "+ %.1f %%", tmp);
       grade = s;
       Serial.println(grade);
     }
@@ -96,10 +111,21 @@ static void notifyCallback2(
   bool isNotify) {
 
   Serial.print("noty2 : ");
-  calc_tilt(pData, length); 
+  calc_tilt(pData, length);
 }
 
+static void notifyCallback3(
+  BLERemoteCharacteristic* pBLERemoteCharacteristic3,
+  uint8_t* pData,
+  size_t length,
+  bool isNotify) {
 
+  Serial.print("noty3 : ");
+  // calc_tilt(pData, length);
+  uint16_t tmp16 = (pData[3] << 8 | pData[2]);
+  power = (int)(tmp16);
+  updatedisp();
+}
 
 static void notifyCallback(
   BLERemoteCharacteristic* pBLERemoteCharacteristic,
@@ -135,7 +161,7 @@ class MyClientCallback : public BLEClientCallbacks {
 bool connectToServer() {
     Serial.print("Forming a connection to ");
     Serial.println(myDevice->getAddress().toString().c_str());
-    
+
     BLEClient*  pClient  = BLEDevice::createClient();
     Serial.println(" - Created client");
 
@@ -178,8 +204,8 @@ bool connectToServer() {
          pRemoteCharacteristic->registerForNotify(notifyCallback);
     }
 
-// tilt
-// Obtain a reference to the service we are after in the remote BLE server.
+    // tilt
+    // Obtain a reference to the service we are after in the remote BLE server.
     pRemoteService = pClient->getService(serviceUUID2);
     if (pRemoteService == nullptr) {
       Serial.print("Failed to find our service UUID: ");
@@ -210,9 +236,50 @@ bool connectToServer() {
     }
 
     if(pRemoteCharacteristic2->canNotify()) {
-         pRemoteCharacteristic2->registerForNotify(notifyCallback2);       
+         pRemoteCharacteristic2->registerForNotify(notifyCallback2);
     }
-    
+
+
+
+
+    // Power
+    BLERemoteService* pRemoteService2 = pClient->getService(serviceUUID3);
+    if (pRemoteService == nullptr) {
+      Serial.print("Failed to find our service UUID3: ");
+      Serial.println(serviceUUID3.toString().c_str());
+      pClient->disconnect();
+      return false;
+    }
+    Serial.println(" - Found our service");
+
+
+    // Obtain a reference to the characteristic in the service of the remote BLE server.
+    pRemoteCharacteristic3 = pRemoteService2->getCharacteristic(charUUID3);
+    if (pRemoteCharacteristic3 == nullptr) {
+      Serial.print("Failed to find our characteristic UUID: ");
+      Serial.println(charUUID3.toString().c_str());
+      pClient->disconnect();
+      return false;
+    }
+    Serial.println(" - Found our characteristic");
+
+
+    // Read the value of the characteristic.
+    if(pRemoteCharacteristic3->canRead()) {
+
+      std::string value = pRemoteCharacteristic3->readValue();
+      std::copy(value.begin(), value.end(), std::begin(arr));
+      Serial.print("power first read : ");
+      uint16_t tmp16 = (arr[3] << 8 | arr[2]);
+      power = (int)(tmp16);
+    }
+
+    if(pRemoteCharacteristic3->canNotify()) {
+         pRemoteCharacteristic3->registerForNotify(notifyCallback3);
+    }
+    // power
+
+
     connected = true;
     return true;
 }
@@ -245,6 +312,18 @@ void setup() {
   Serial.begin(115200);
   Serial.println("Starting Arduino BLE Client application...");
   BLEDevice::init("");
+
+  WiFi.begin(ssid, password);
+  Serial.println("Connecting");
+  while(WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.print("Connected to WiFi network with IP Address: ");
+  Serial.println(WiFi.localIP());
+  tft.fillRect(0, 48, 10, 10, TFT_GREEN);
+
   tft.init();
   tft.setRotation(1);
 
@@ -252,8 +331,9 @@ void setup() {
   tft.fillScreen(TFT_BLACK);
   tft.setTextColor(TFT_SKYBLUE, TFT_BLACK);
   tft.drawString("WAHOO", 0, 0, 4);
-  tft.drawString("Gear Display", 0, 52, 4);
-  tft.drawString("Connecting....", 0, 78, 4);
+  tft.drawString("Dataviz", 0, 23, 4);
+  // tft.drawString("Connecting....", 0, 48, 4);
+  tft.fillRect(0, 58, 10, 10, TFT_RED);
 
   // Retrieve a Scanner and set the callback we want to use to be informed when we
   // have detected a new device.  Specify that we want active scanning and start the
@@ -271,14 +351,16 @@ void setup() {
 void loop() {
 
   // If the flag "doConnect" is true then we have scanned for and found the desired
-  // BLE Server with which we wish to connect.  Now we connect to it.  Once we are 
+  // BLE Server with which we wish to connect.  Now we connect to it.  Once we are
   // connected we set the connected flag to be true.
   if (doConnect == true) {
     if (connectToServer()) {
+      tft.fillRect(0, 58, 10, 10, TFT_GREEN);
+      tft.setRotation(0);
       Serial.println("We are now connected to the BLE Server.");
       tft.setTextColor(TFT_SKYBLUE, TFT_BLACK);
-      tft.drawString("Connected :-)   ", 0, 78, 4);
-      //tft.drawXBitmap(155, 0, zwiftlogo, 100, 100, TFT_BLACK, TFT_ORANGE);      
+      //tft.drawXBitmap(155, 0, zwiftlogo, 100, 100, TFT_BLACK, TFT_ORANGE);
+      tft.fillRect(0, 0, 5, 5, TFT_SKYBLUE);
       tft.fillScreen(TFT_BLACK);
       //tft.drawXBitmap(155, 0, zwiftlogo, 100, 100, TFT_BLACK, TFT_ORANGE);
     } else {
@@ -292,14 +374,15 @@ void loop() {
   if (connected) {
       String newValue = "Time since boot: " + String(millis()/1000);
   //  Serial.println("Setting new characteristic value to \"" + newValue + "\"");
-    
+
      // Set the characteristic's value to be the array of bytes that is actually a string.
     pRemoteCharacteristic->writeValue(newValue.c_str(), newValue.length());
   }else if(doScan){
     BLEDevice::getScan()->start(0);  // this is just eample to start scan after disconnect, most likely there is better way to do it in arduino
   }
-  
+
   delay(1000); // Delay a second between loops.
+  Serial.println("End of loop delay.");
 } // End of loop
 
 
@@ -340,21 +423,25 @@ void update_rear(void)
     for(int i = 0 ; i < 12 ; i++)
       tft.drawRect(40 + i*10,60 + i*2,5,70 - i*4, TFT_WHITE);
     pre_rg = 3;
-  }  
+  }
   clear_cassette(pre_rg);
-  fill_cassette(rg); 
+  fill_cassette(rg);
   pre_rg = rg;
 }
 
 void update_gear(void){
-  tft.drawString(frontgear, 0, 0, 7);
-  tft.drawString(":", 35, 0, 7);
-  tft.fillRect(50,0,tft.width() - 50,50,TFT_BLACK);
-  tft.drawString(reargear, 50, 0, 7);
+  tft.drawString(frontgear, 10, 0, 7);
+  // tft.drawString(":", 35, 0, 7);
+  tft.fillRect(10,50, tft.width() - 10,100,TFT_BLACK);
+  tft.drawString(reargear, 10, 50, 7);
 }
 
 void update_grade(void) {
-  tft.drawString(grade, 140, 10, 4);
+  tft.drawString(grade, 10, 110, 4);
+}
+
+void update_power(void){
+  tft.drawString(power, 10, 130, 4);
 }
 
 void update_lock(void)
@@ -363,20 +450,47 @@ void update_lock(void)
   if(prelock == tilt_lock)
     return;
 
-  tft.fillRect(180, 60, 64, 64, TFT_BLACK);
+  tft.fillRect(70, 00, 10, 10, TFT_BLACK);
   tft.setSwapBytes(true);
   if(tilt_lock)
-    tft.pushImage(180, 60, 64, 64, lock64);
+    tft.fillRect(70, 00, 10, 10, TFT_RED);
+    // tft.pushImage(180, 60, 64, 64, lock64);
   else
-    tft.pushImage(180, 60, 64, 64, unlock64);
-      
+    tft.fillRect(70, 00, 10, 10, TFT_BLUE);
+  // tft.pushImage(180, 60, 64, 64, unlock64);
+
    prelock = tilt_lock;
+}
+
+void send_to_sauce(void){
+  if(WiFi.status()== WL_CONNECTED){
+      WiFiClient client;
+      HTTPClient http;
+
+      // Your Domain name with URL path or IP address with path
+      http.begin(client, serverName);
+      // if (! http.begin(client, serverName)) {
+        // Serial.println("No sauce!");
+      // } else {
+      http.setConnectTimeout(100);
+      Serial.println("posting sauce!");
+      http.addHeader("Content-Type", "application/json");
+      String tilty = String(tilt_lock);
+      int httpResponseCode  = http.POST("[\"self\",{ \"KICKRgear\":{\"cr\":\""+frontgear+"\",\"gr\":\""+reargear+"\"}, \"KICKRpower\":\""+power+"\", \"KICKRgrade\":\""+grade+"\",  \"KICKRtiltLock\":\""+tilty+"\" }]");
+      // }
+           // int httpResponseCode2 = http.POST("[\"self\",{}]");
+      // int httpResponseCode3 = http.POST("[\"self\",{ }]");
+      // int httpResponseCode4 = http.POST("[\"self\",{ }]");
+      http.end();
+  }
 }
 
 void updatedisp(){
   update_gear();
   update_grade();
-  update_front();
-  update_rear();
+  // update_front();
+  // update_rear();
   update_lock();
+  update_power();
+  send_to_sauce();
 }
