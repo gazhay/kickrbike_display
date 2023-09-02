@@ -4,7 +4,7 @@
 - Added cycling power metric
 - Relays all data to [sauce4zwift](https://www.sauce.llc/products/sauce4zwift/)
 
-## Data injected into sauce4zwift
+## Data injected into sauce4zwift (into the "self" athelete)
 
 ```
 ["self",{ "KICKRgear":{"cr":<frontgear>,"gr":<reargear>}, "KICKRpower":<power>, "KICKRgrade":<grade>,  "KICKRtiltLock":<tilt> }]
