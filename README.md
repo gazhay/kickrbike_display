@@ -30,7 +30,7 @@ Runs on LiLyGo T-Display.
 
 * gear display
 * grade(tilt) percentage display
-* chainrings/cassette display
+* ~~chainrings/cassette display~~ (commented out on this version)
 * lock / unlock display
 
 
