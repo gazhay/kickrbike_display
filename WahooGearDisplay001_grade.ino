@@ -22,7 +22,9 @@ const char* ssid = "<yourSSID>";
 const char* password = "<yourPassword>";
 
 const char* serverName = "http://<sauceServer>:1080/api/rpc/v1/updateAthleteData";
-
+const char* brakeServer_camera_back = "http://<keypressServer>:8080/api/camback";
+const char* brakeServer_camera_frnt = "http://<keypressServer>:8080/api/camfrnt";
+const char* brakeServer_camera_over = "http://<keypressServer>:8080/api/camover";
 
 TFT_eSPI tft = TFT_eSPI();  // Invoke library, pins defined in User_Setup.h
 
@@ -59,7 +61,11 @@ int fg, rg;
 uint8_t arr[32];
 int tilt_lock = 1;
 int negative = 0;
+int brake = 0; //left = 1, right = 2, off = 0;
 
+char LEFT = '9'; // overhead
+char RIGHT = '6'; // backwards
+char NONE = '1'; // Front cam
 
 void calc_tilt(uint8_t *pData, size_t length){
 
@@ -127,36 +133,81 @@ static void notifyCallback3(
   updatedisp();
 }
 
+static void changeCam(void){
+  // Serial.println("Change Camera");
+  if(WiFi.status()== WL_CONNECTED){
+      WiFiClient client;
+      HTTPClient http;
+
+      String urlstring = "";
+
+      if (ACTIVECAM=='1'){
+        http.begin(client, brakeServer_camera_frnt);
+      } else if (ACTIVECAM=='6'){
+        http.begin(client, brakeServer_camera_back);
+      } else if (ACTIVECAM=='9'){
+        http.begin(client, brakeServer_camera_over);
+      }
+      // Serial.print("Changing camera to ");
+      // Serial.println(ACTIVECAM);
+      http.setConnectTimeout(100);
+      http.addHeader("Content-Type", "application/json");
+      int httpResponseCode  = http.GET();
+      http.end();
+  }
+
+}
+
 static void notifyCallback(
   BLERemoteCharacteristic* pBLERemoteCharacteristic,
   uint8_t* pData,
   size_t length,
   bool isNotify) {
 
-  if(length < 5) // brake garbage data
-    return ;
+  if (pData[0]==7){
+    // Status packet
+    frontgear = (1+pData[2]);
+    reargear = (1+pData[3]);
 
-  frontgear = (1+pData[2]);
-  reargear = (1+pData[3]);
+    fg = (int)(1+pData[2]);
+    rg = (int)(1+pData[3]);
+  } else if (pData[0]==2){
+    // Brake lever
+    char before = ACTIVECAM;
+    if (pData[2]==90){
+      Serial.println("Left Shifter depress");
+      if (ACTIVECAM==LEFT){
+        ACTIVECAM = NONE;
+      } else {
+        ACTIVECAM = LEFT;
+      }
+    } else if (pData[2]==227){
+      Serial.println("Right Shifter depress");
+      if (ACTIVECAM==RIGHT){
+        ACTIVECAM = NONE;
+      } else {
+        ACTIVECAM = RIGHT;
+      }
+    } else {
+      Serial.println("Shifter release");
+    }
+    if (ACTIVECAM!=before){
+      changeCam();
+    }
+    Serial.print("Current Cam ");
+    Serial.println(ACTIVECAM);
+  } else {//if (pData[0]==1){
+    // shifter
+    frontgear = (1+pData[2]);
+    reargear = (1+pData[3]);
 
-  fg = (int)(1+pData[2]);
-  rg = (int)(1+pData[3]);
-  Serial.println("Front / Rear");
-  Serial.print(frontgear);
-  Serial.print(" : ");
-  Serial.println(reargear);
+    fg = (int)(1+pData[2]);
+    rg = (int)(1+pData[3]);
+  }
+
   updatedisp();
 }
 
-class MyClientCallback : public BLEClientCallbacks {
-  void onConnect(BLEClient* pclient) {
-  }
-
-  void onDisconnect(BLEClient* pclient) {
-    connected = false;
-    Serial.println("onDisconnect");
-  }
-};
 
 bool connectToServer() {
     Serial.print("Forming a connection to ");

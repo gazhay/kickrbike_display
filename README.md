@@ -4,6 +4,9 @@
 - Added cycling power metric
 - Relays all data to [sauce4zwift](https://www.sauce.llc/products/sauce4zwift/)
 
+- Bonus - If you can pursuade Justin to allow a keypress solution in sauce you can switch cams with brake levers.
+(Currently I ping my own local running server which does the camera switching)
+
 ## Data injected into sauce4zwift (into the "self" athelete)
 
 ```
