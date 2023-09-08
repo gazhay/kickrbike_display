@@ -55,7 +55,9 @@ static BLEAdvertisedDevice* myDevice;
 String reargear = ("0");
 String frontgear = ("0");
 String grade = ("0.0");
-String power = ("0");
+String power = ("000");
+
+char ACTIVECAM = '1';
 
 int fg, rg;
 uint8_t arr[32];
@@ -116,7 +118,7 @@ static void notifyCallback2(
   size_t length,
   bool isNotify) {
 
-  Serial.print("noty2 : ");
+  // Serial.print("noty2 : ");
   calc_tilt(pData, length);
 }
 
@@ -126,11 +128,11 @@ static void notifyCallback3(
   size_t length,
   bool isNotify) {
 
-  Serial.print("noty3 : ");
+  // Serial.print("noty3 : ");
   // calc_tilt(pData, length);
   uint16_t tmp16 = (pData[3] << 8 | pData[2]);
   power = (int)(tmp16);
-  updatedisp();
+  // updatedisp();
 }
 
 static void changeCam(void){
@@ -208,6 +210,15 @@ static void notifyCallback(
   updatedisp();
 }
 
+class MyClientCallback : public BLEClientCallbacks {
+  void onConnect(BLEClient* pclient) {
+  }
+
+  void onDisconnect(BLEClient* pclient) {
+    connected = false;
+    Serial.println("onDisconnect");
+  }
+};
 
 bool connectToServer() {
     Serial.print("Forming a connection to ");
@@ -433,7 +444,7 @@ void loop() {
   }
 
   delay(1000); // Delay a second between loops.
-  Serial.println("End of loop delay.");
+  // Serial.println("End of loop delay."+doConnect);
 } // End of loop
 
 
@@ -527,12 +538,10 @@ void send_to_sauce(void){
       Serial.println("posting sauce!");
       http.addHeader("Content-Type", "application/json");
       String tilty = String(tilt_lock);
-      int httpResponseCode  = http.POST("[\"self\",{ \"KICKRgear\":{\"cr\":\""+frontgear+"\",\"gr\":\""+reargear+"\"}, \"KICKRpower\":\""+power+"\", \"KICKRgrade\":\""+grade+"\",  \"KICKRtiltLock\":\""+tilty+"\" }]");
-      // }
-           // int httpResponseCode2 = http.POST("[\"self\",{}]");
-      // int httpResponseCode3 = http.POST("[\"self\",{ }]");
-      // int httpResponseCode4 = http.POST("[\"self\",{ }]");
+      String brakeState = String(brake);
+      int httpResponseCode  = http.POST("[\"self\",{ \"KICKRgear\":{\"cr\":\""+frontgear+"\",\"gr\":\""+reargear+"\"}, \"KICKRpower\":\""+power+"\", \"KICKRgrade\":\""+grade+"\",  \"KICKRtiltLock\":\""+tilty+"\", \"KICKRbrake\":\""+brakeState+"\" }]");
       http.end();
+      delay(300);
   }
 }
 
