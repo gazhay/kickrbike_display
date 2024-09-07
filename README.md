@@ -44,8 +44,8 @@ enjoy~
 It appears that recent versions of the board firmware and TFT lib are incompatible.
 I can get them to compile and upload firmware with 
 
-esp32 v2.0.12
-TFT_eSPI v2.5.0
+* esp32 v2.0.12
+* TFT_eSPI v2.5.0
 
 However, I can't get the display to output anything. 
 I have one dongle flashed with this from sep23 working, but another dongle (bought at the same time) flashed today, even with the above libs, displays nothing. 
