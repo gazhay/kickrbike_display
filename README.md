@@ -47,9 +47,7 @@ I can get them to compile and upload firmware with
 * esp32 v2.0.12
 * TFT_eSPI v2.5.0
 
-However, I can't get the display to output anything. 
-I have one dongle flashed with this from sep23 working, but another dongle (bought at the same time) flashed today, even with the above libs, displays nothing. 
-(Also doesn't display the demo files either)
+  You will also need Arduino IDE v2.2.1 (the latest will compile but TFT screen will be blank)
 
 The issue is reported to [Lilygo](https://github.com/Xinyuan-LilyGO/T-Dongle-S3/issues/26) but they don't seem to be monitoring or responding. 
 Anyone with more knowledge is free to PR anything that may help, but I don't have the time to continue bug hunting.
