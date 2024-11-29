@@ -2,7 +2,7 @@
 * An external gear display for the Wahoo Kickr Bike
 * On the LiLiGo T-Display
 * Based on the Arduino BLE Example
-* v2.1 fixing some bugs with 2.0
+* v2.2 fixing some bugs with 2.0,2.1
  */
 // New background colour
 //#define TFT_BROWN 0x38E0
@@ -128,67 +128,135 @@ char RIGHT    = '6'; // backwards
 char NONE     = '1'; // Front cam
 
 void handleBLENotification(uint8_t* pData, size_t length, uint8_t type) {
-    switch(type) {
-        case 1: // Gear data
-            if (pData[0] == 7) {
-                // Status packet
-                frontgear = String(1+pData[2]);
-                reargear  = String(1+pData[3]);
-
-                fg = (int)(1+pData[2]);
-                rg = (int)(1+pData[3]);
-
-                needsGearUpdate = true;
-            } else if (pData[0] == 2) {
-                char before = ACTIVECAM;
-                if (pData[2] == 90) {
-                    ACTIVECAM = (ACTIVECAM == LEFT) ? NONE : LEFT;
-                } else if (pData[2] == 227) {
-                    ACTIVECAM = (ACTIVECAM == RIGHT) ? NONE : RIGHT;
-                }
-                if (ACTIVECAM != before) {
-                    changeCam();
-                }
-            }
-            break;
-
-        case 2: // Grade data
-            if (length == 4 && pData[0] == 0xfd && pData[1] == 0x34) {
-                if (pData[3] < 0x80) {
-                    bikeState.grade = (float)(pData[3] << 8 | pData[2]) / 100;
-                } else {
-                    uint16_t tmp16 = 0xffff - (pData[3] << 8 | pData[2]);
-                    bikeState.grade = -(float)tmp16 / 100;
-                }
-                // Convert grade to string with one decimal place and % sign
-                char gradeStr[8];
-                dtostrf(bikeState.grade, 4, 1, gradeStr);
-                strcat(gradeStr, "%");
-                grade = String(gradeStr);
-                needsGradeUpdate = true;
-            } else if (length == 3 && pData[0] == 0xfd && pData[1] == 0x33) {
-                bool newTiltLock = pData[2] == 0x01;
-                if (bikeState.tiltLock != newTiltLock) {
-                    bikeState.tiltLock = newTiltLock;
-                    tilt_lock = bikeState.tiltLock;
-                    update_lock(); // Only update display when state changes
-                }
-            }
-            break;
-
-        case 3: // Power data
-            if (length >= 4) {
-                bikeState.power = (pData[3] << 8 | pData[2]);
-                // Convert power to 3-digit string with leading zeros
-                char powerStr[4];
-                snprintf(powerStr, sizeof(powerStr), "%03d", bikeState.power);
-                power = String(powerStr);
-                needsPowerUpdate = true;
-            }
-            break;
+    // Defensive checks
+    if (pData == nullptr || length == 0) {
+        Serial.println("Invalid BLE notification");
+        return;
     }
 
-    bikeState.isDirty = true;
+    // Add a try-catch block to prevent crashes
+    try {
+        switch(type) {
+            case 1: // Gear data
+                if (length < 4) break;  // Prevent buffer overrun
+
+                if (pData[0] == 7) {
+                    // Status packet
+                    frontgear = String(1+pData[2]);
+                    reargear  = String(1+pData[3]);
+
+                    fg = (int)(1+pData[2]);
+                    rg = (int)(1+pData[3]);
+
+                    needsGearUpdate = true;
+                } else if (pData[0] == 2 && length >= 3) {
+                    // Brake lever detection and state machine
+                    char previousCam = ACTIVECAM;
+
+                    if (pData[2] == 90) {
+                        // Left brake lever
+                        brake = 1;
+                        Serial.print("Left Brake Lever Pressed. Previous Cam: ");
+                        Serial.print(previousCam);
+
+                        if (previousCam == LEFT) {
+                            // If previously LEFT, go to default front view
+                            ACTIVECAM = NONE;
+                            Serial.println(" -> Default Front View");
+                        } else if (previousCam == NONE) {
+                            // If previously NONE, set to LEFT
+                            ACTIVECAM = LEFT;
+                            Serial.println(" -> Left Camera");
+                        } else {
+                            // If different state, go to LEFT
+                            ACTIVECAM = LEFT;
+                            Serial.println(" -> Left Camera");
+                        }
+                    } else if (pData[2] == 227) {
+                        // Right brake lever
+                        brake = 2;
+                        Serial.print("Right Brake Lever Pressed. Previous Cam: ");
+                        Serial.print(previousCam);
+
+                        if (previousCam == RIGHT) {
+                            // If previously RIGHT, go to default front view
+                            ACTIVECAM = NONE;
+                            Serial.println(" -> Default Front View");
+                        } else if (previousCam == NONE) {
+                            // If previously NONE, set to RIGHT
+                            ACTIVECAM = RIGHT;
+                            Serial.println(" -> Right Camera");
+                        } else {
+                            // If different state, go to RIGHT
+                            ACTIVECAM = RIGHT;
+                            Serial.println(" -> Right Camera");
+                        }
+                    } else {
+                        // Brake released
+                        brake = 0;
+                        Serial.println("Brake Released");
+                    }
+
+                    // Always attempt to change camera when brake lever state changes
+                    changeCam();
+                }
+                break;
+
+            case 2: // Grade data
+                if (length == 4 && pData[0] == 0xfd && pData[1] == 0x34) {
+                    float calculatedGrade;
+                    if (pData[3] < 0x80) {
+                        calculatedGrade = (float)(pData[3] << 8 | pData[2]) / 100;
+                    } else {
+                        uint16_t tmp16 = 0xffff - (pData[3] << 8 | pData[2]);
+                        calculatedGrade = -(float)tmp16 / 100;
+                    }
+
+                    // Validate grade range (typical bike grades are between -30% and +30%)
+                    if (calculatedGrade >= -30.0 && calculatedGrade <= 30.0) {
+                        bikeState.grade = calculatedGrade;
+
+                        // Convert grade to string with one decimal place and % sign
+                        char gradeStr[8];
+                        dtostrf(bikeState.grade, 4, 1, gradeStr);
+                        strcat(gradeStr, "%");
+                        grade = String(gradeStr);
+                        needsGradeUpdate = true;
+                    }
+                } else if (length == 3 && pData[0] == 0xfd && pData[1] == 0x33) {
+                    bool newTiltLock = pData[2] == 0x01;
+                    if (bikeState.tiltLock != newTiltLock) {
+                        bikeState.tiltLock = newTiltLock;
+                        tilt_lock = bikeState.tiltLock;
+                        update_lock(); // Only update display when state changes
+                    }
+                }
+                break;
+
+            case 3: // Power data
+                if (length >= 4) {
+                    uint16_t rawPower = (pData[3] << 8 | pData[2]);
+
+                    // Validate power range (typical bike power is 0-2000 watts)
+                    if (rawPower <= 2000) {
+                        bikeState.power = rawPower;
+
+                        // Convert power to 3-digit string with leading zeros
+                        char powerStr[4];
+                        snprintf(powerStr, sizeof(powerStr), "%03d", bikeState.power);
+                        power = String(powerStr);
+                        needsPowerUpdate = true;
+                    }
+                }
+                break;
+        }
+
+        bikeState.isDirty = true;
+    }
+    catch (...) {
+        // Log any unexpected errors
+        Serial.println("Error in BLE notification handler");
+    }
 }
 
 static void notifyCallback(BLERemoteCharacteristic* pChar, uint8_t* pData, size_t length, bool isNotify) {
@@ -635,8 +703,7 @@ void send_to_sauce(void){
   if(connectToWiFi()){
       // Reuse the global HTTP client
       if(!http.begin(wifiClient, serverName)) {
-          Serial.println("HTTP Begin failed");
-          displayConnectionStatus("HTTP", "Failed", TFT_RED);
+          // Silently ignore HTTP begin failure
           return;
       }
 
@@ -657,34 +724,16 @@ void send_to_sauce(void){
                           "\"KICKRbrake\":\"" + brakeState + "\""
                           "}]";
 
-      Serial.print("Sending to sauce: ");
-      Serial.println(jsonPayload);
-
-      // Send POST request
+      // Send POST request with minimal error handling
       int httpResponseCode = http.POST(jsonPayload);
-
-      if (httpResponseCode > 0) {
-          Serial.print("HTTP Response code: ");
-          Serial.println(httpResponseCode);
-          // String response = http.getString();
-          // Serial.println(response);
-          displayConnectionStatus("HTTP", "OK", TFT_GREEN);
-      } else {
-          Serial.print("Error code: ");
-          Serial.println(httpResponseCode);
-          displayConnectionStatus("HTTP", "Error", TFT_RED);
-      }
 
       // Clean up
       http.end();
-  } else {
-      displayConnectionStatus("HTTP", "No WiFi", TFT_YELLOW);
   }
 }
 
 bool connectToWiFi() {
     if (WiFi.status() == WL_CONNECTED) {
-        displayConnectionStatus("WIFI", "Connected", TFT_GREEN);
         return true;
     }
 
@@ -697,11 +746,9 @@ bool connectToWiFi() {
         connectionRetries = 0;
         WiFi.disconnect();
         delay(100);
-        displayConnectionStatus("WIFI", "Failed", TFT_RED);
     }
 
     if (WiFi.status() != WL_CONNECTED) {
-        displayConnectionStatus("WIFI", "Connecting", TFT_YELLOW);
         WiFi.begin(ssid, password);
         connectionRetries++;
     }
@@ -848,30 +895,52 @@ static void changeCam(void){
   if(connectToWiFi()){
       const char* endpoint;
       unsigned long now = millis();
-      if (now - lastCamChange < CAM_CHANGE_DEBOUNCE) return;
+      if (now - lastCamChange < CAM_CHANGE_DEBOUNCE) {
+          Serial.println("Camera change too soon, skipping");
+          return;
+      }
       lastCamChange = now;
 
       switch(ACTIVECAM) {
-        case '1': endpoint = brakeServer_camera_frnt; break;
-        case '6': endpoint = brakeServer_camera_back; break;
-        case '9': endpoint = brakeServer_camera_over; break;
-        default: return;
+        case '1':
+          endpoint = brakeServer_camera_frnt;
+          Serial.println("Changing to Front Camera");
+          break;
+        case '6':
+          endpoint = brakeServer_camera_back;
+          Serial.println("Changing to Back Camera");
+          break;
+        case '9':
+          endpoint = brakeServer_camera_over;
+          Serial.println("Changing to Overhead Camera");
+          break;
+        default:
+          Serial.println("Invalid Camera Selection");
+          return;
       }
 
+      Serial.print("Attempting to connect to endpoint: ");
+      Serial.println(endpoint);
+
       http.begin(wifiClient, endpoint);
-      http.setConnectTimeout(100);
+      http.setConnectTimeout(1000);  // Increased timeout
       http.addHeader("Content-Type", "application/json");
+
       int httpResponseCode  = http.GET();
+
+      // Detailed HTTP response logging
+      Serial.print("Camera Change HTTP Response: ");
+      Serial.println(httpResponseCode);
+
+      // If not successful, get more details
+      if (httpResponseCode != 200) {
+          String errorResponse = http.getString();
+          Serial.print("Error Response: ");
+          Serial.println(errorResponse);
+      }
+
       http.end();
+  } else {
+      Serial.println("WiFi not connected, cannot change camera");
   }
-
-}
-
-void displayConnectionStatus(const char* network, const char* status, uint16_t color) {
-    static uint8_t yOffset = 220; // Bottom of the screen
-    tft.setTextColor(color, TFT_YELLOW);
-    tft.fillRect(0, yOffset, tft.width(), 20, TFT_BLACK);
-    char statusText[30];
-    snprintf(statusText, sizeof(statusText), "%s:%s", network, status);
-    tft.drawString(statusText, 0, yOffset, 2);
 }
